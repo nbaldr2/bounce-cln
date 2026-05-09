@@ -16,7 +16,7 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /api/nodes/:id
+// GET /api/nodes/:id — single node with IPs + unresolved alerts
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const node = await prisma.node.findUniqueOrThrow({
@@ -24,8 +24,60 @@ router.get('/:id', async (req: Request, res: Response) => {
       include: { ips: true, alerts: { where: { resolved: false }, take: 10, orderBy: { createdAt: 'desc' } } },
     });
     res.json(node);
-  } catch (err: any) {
+  } catch {
     res.status(404).json({ error: 'Node not found' });
+  }
+});
+
+// GET /api/nodes/:id/logs/stream — SSE endpoint for real-time provisioning logs
+router.get('/:id/logs/stream', async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  // Send existing logs
+  const existingLogs = await prisma.provisionLog.findMany({
+    where: { nodeId: id },
+    orderBy: { createdAt: 'asc' },
+  });
+  for (const log of existingLogs) {
+    res.write(`data: ${JSON.stringify(log)}\n\n`);
+  }
+
+  // Listen for new logs via event bus
+  const onLog = (log: any) => {
+    res.write(`data: ${JSON.stringify(log)}\n\n`);
+  };
+  const onDone = () => {
+    res.write(`event: done\ndata: {}\n\n`);
+    res.end();
+  };
+
+  const { provisionEventBus } = await import('../services/nodeManager');
+  provisionEventBus.on(`log:${id}`, onLog);
+  provisionEventBus.on(`done:${id}`, onDone);
+
+  req.on('close', () => {
+    provisionEventBus.off(`log:${id}`, onLog);
+    provisionEventBus.off(`done:${id}`, onDone);
+  });
+});
+
+// GET /api/nodes/:id/logs — fetch all provision logs for replay
+router.get('/:id/logs', async (req: Request, res: Response) => {
+  try {
+    const logs = await prisma.provisionLog.findMany({
+      where: { nodeId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json(logs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

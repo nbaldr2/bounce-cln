@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Trash2, RefreshCw, Terminal, Cpu, MemoryStick, Activity } from 'lucide-react';
+import LogTerminal from '@/components/LogTerminal';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -24,6 +25,8 @@ export default function NodesPage() {
   const [form, setForm] = useState({ hostname: '', ip: '', sshPort: '22', sshUser: 'root', sshPassword: '' });
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<Node | null>(null);
+  const [terminalNodeId, setTerminalNodeId] = useState<string | null>(null);
+  const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
 
   const fetch_ = useCallback(async () => {
     try {
@@ -36,17 +39,30 @@ export default function NodesPage() {
 
   useEffect(() => { fetch_(); const t = setInterval(fetch_, 10000); return () => clearInterval(t); }, [fetch_]);
 
+  // Open terminal when a newly-added node starts provisioning
+  useEffect(() => {
+    if (pendingNodeId) {
+      const node = nodes.find(n => n.id === pendingNodeId);
+      if (node && (node.status === 'ONLINE' || node.status === 'ERROR')) {
+        // keep terminal open — user closes manually
+      }
+    }
+  }, [nodes, pendingNodeId]);
+
   const addNode = async () => {
     if (!form.hostname || !form.ip) return;
     setSaving(true);
     try {
-      await fetch(`${API}/api/nodes`, {
+      const res = await fetch(`${API}/api/nodes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, sshPort: parseInt(form.sshPort) }),
       });
+      const node = await res.json();
       setShowModal(false);
       setForm({ hostname: '', ip: '', sshPort: '22', sshUser: 'root', sshPassword: '' });
+      setPendingNodeId(node.id);
+      setTerminalNodeId(node.id);
       fetch_();
     } catch { /* ignore */ }
     finally { setSaving(false); }
@@ -152,6 +168,11 @@ export default function NodesPage() {
                 <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => setSelected(node)}>
                   <Terminal size={13} /> Details
                 </button>
+                {(node.status === 'PROVISIONING' || node.status === 'ERROR' || node.status === 'PENDING') && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTerminalNodeId(node.id)}>
+                    <Activity size={13} /> Logs
+                  </button>
+                )}
                 <button className="btn btn-ghost btn-sm" onClick={() => reprovision(node.id)}>
                   <RefreshCw size={13} />
                 </button>
@@ -217,6 +238,11 @@ export default function NodesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Provisioning log terminal */}
+      {terminalNodeId && (
+        <LogTerminal nodeId={terminalNodeId} onClose={() => setTerminalNodeId(null)} />
       )}
     </div>
   );

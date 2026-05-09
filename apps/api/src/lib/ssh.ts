@@ -74,3 +74,46 @@ export async function uploadDirectory(config: SSHConfig, localDir: string, remot
     ssh.dispose();
   }
 }
+
+export async function executeSSHWithLog(
+  config: SSHConfig,
+  commands: string[],
+  onLog: (message: string, level: string) => void
+): Promise<string[]> {
+  const ssh = new NodeSSH();
+  const results: string[] = [];
+
+  try {
+    onLog(`Connecting to ${config.username}@${config.host}:${config.port}...`, 'INFO');
+
+    await ssh.connect({
+      host: config.host,
+      port: config.port,
+      username: config.username,
+      ...(config.privateKeyPath ? { privateKeyPath: config.privateKeyPath } : {}),
+      ...(config.password ? { password: config.password } : {}),
+      readyTimeout: 30000,
+    });
+
+    onLog('SSH connection established', 'SUCCESS');
+
+    for (const cmd of commands) {
+      onLog(`$ ${cmd}`, 'INFO');
+      const result = await ssh.execCommand(cmd, { cwd: '/' });
+      if (result.stdout) {
+        result.stdout.split('\n').filter(Boolean).forEach(line => onLog(line, 'OUTPUT'));
+      }
+      if (result.stderr && !result.stderr.includes('WARNING')) {
+        result.stderr.split('\n').filter(Boolean).forEach(line => onLog(line, 'WARN'));
+      }
+      results.push(result.stdout || result.stderr);
+    }
+  } catch (error: any) {
+    onLog(`SSH Error: ${error.message}`, 'ERROR');
+    throw error;
+  } finally {
+    ssh.dispose();
+  }
+
+  return results;
+}

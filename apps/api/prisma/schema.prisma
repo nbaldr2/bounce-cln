@@ -245,6 +245,17 @@ model Alert {
   @@index([resolved, createdAt])
 }
 
+model ProvisionLog {
+  id        String   @id @default(uuid())
+  nodeId    String
+  message   String   @db.Text
+  level     String   @default("INFO")
+  command   String?
+  createdAt DateTime @default(now())
+
+  @@index([nodeId, createdAt])
+}
+
 model Setting {
   key         String   @id
   value       String

@@ -591,6 +591,101 @@ tbody td {
   line-height: 1.7;
 }
 
+/* ── Log Terminal ──────────────────────────────── */
+.log-terminal-modal {
+  max-width: 780px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  width: 90vw;
+}
+
+.terminal-wrap {
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 60vh;
+  overflow-y: auto;
+  color: #e6edf3;
+}
+
+.terminal-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 19px;
+}
+
+.terminal-header-line {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.terminal-time {
+  color: var(--text-muted);
+  margin-right: 8px;
+  user-select: none;
+  font-size: 11px;
+}
+
+.terminal-level {
+  margin-right: 6px;
+  user-select: none;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.terminal-msg {
+  color: #e6edf3;
+}
+
+.terminal-output {
+  color: var(--text-secondary);
+}
+
+.terminal-cmd {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding-left: 20px;
+  margin-top: 1px;
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  background: var(--accent);
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.terminal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.terminal-dot.connected {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.terminal-dot.disconnected {
+  background: var(--text-muted);
+}
+
 /* ── Scrollbar ──────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

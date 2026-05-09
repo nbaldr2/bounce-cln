@@ -42,8 +42,8 @@ export async function provisionNode(nodeId: string, sshPassword?: string): Promi
     // Step 1: Install system dependencies
     await writeProvisionLog(nodeId, 'Step 1/6: Installing system dependencies...', 'INFO');
     await executeSSHWithLog(sshConfig, [
-      'apt-get update -qq',
-      'apt-get install -y -qq python3 python3-pip python3-venv curl',
+      // Auto-detect package manager — dnf for RHEL/AlmaLinux, apt-get for Debian/Ubuntu
+      'which dnf && dnf install -y python3 python3-pip python3-virtualenv curl wget || (which apt-get && apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv curl wget)',
       'mkdir -p /opt/bounce-agent',
     ], logCb);
     await writeProvisionLog(nodeId, 'System dependencies installed', 'SUCCESS');
@@ -111,18 +111,13 @@ WantedBy=multi-user.target`;
       await executeSSHWithLog(sshConfig, [
         `wget -q -O /root/PMTA/pmta-installer.tar.gz ${masterUrl}/public/pmta-installer.tar.gz`,
         'cd /root/PMTA && tar -xzf pmta-installer.tar.gz',
-        'cd /root/PMTA && rpm -ivh --force PowerMTA-5.0r8.rpm || true',
-        'service pmta stop || true',
-        'service pmtahttp stop || true',
-        'rm -rf /usr/sbin/pmtad',
-        'rm -rf /usr/sbin/pmtahttpd',
+        'cd /root/PMTA && rpm -ivh --force PowerMTA-5.0r8.rpm PowerMTA-api-5.0r8.rpm PowerMTA-snmp-5.0r8.rpm || true',
+        'systemctl stop pmta pmtahttp 2>/dev/null || service pmta stop 2>/dev/null || true',
+        'rm -rf /usr/sbin/pmtad /usr/sbin/pmtahttpd',
         'cd /root/PMTA/usr/sbin && cp * /usr/sbin/',
-        'chmod -R 777 /usr/sbin/pmta',
-        'chmod -R 777 /usr/sbin/pmtad',
-        'chmod -R 777 /usr/sbin/pmtahttpd',
+        'chmod -R 777 /usr/sbin/pmta /usr/sbin/pmtad /usr/sbin/pmtahttpd',
         'cp /root/PMTA/license /etc/pmta/ || true',
-        'service pmta start || true',
-        'service pmtahttp start || true',
+        'systemctl start pmta pmtahttp 2>/dev/null || service pmta start 2>/dev/null || true',
       ], logCb);
       await prisma.node.update({
         where: { id: nodeId },

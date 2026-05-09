@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+.env
+*.log
+__pycache__/
+*.pyc
+.venv/
+uploads/
+apps/api/public/pmta-installer.tar.gz

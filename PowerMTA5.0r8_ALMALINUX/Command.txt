@@ -1,0 +1,36 @@
+PowerMTA5.0r6 Nulled By Rony(skype rony.raskhit)
+================================================
+Create folder PMTA  in /root
+Upload all the files in PowerMTA5.0r8 to /root/PMTA
+
+Commands to run in putty (ssh)
+
+cd /root/
+cd /root/PMTA/
+rpm -ivh  PowerMTA-5.0r8-202104262142.x86_64.rpm 
+service pmta stop
+service pmtahttp stop
+rm -rf /usr/sbin/pmtad
+rm -rf /usr/sbin/pmtahttpd
+cd /root/PMTA/usr/sbin
+cp * /usr/sbin
+chmod -R 777 /usr/sbin/pmta
+chmod -R 777 /usr/sbin/pmtad
+chmod -R 777 /usr/sbin/pmtahttpd
+
+cd /root/PMTA
+cp license /etc/pmta
+
+
+3) START PMTA
+
+service pmta start
+service pmtahttp start
+
+if not run type "pmtad --debug"
+
+
+4) EDIT CONFIG IN /etc/pmta/config
+
+service pmta reload
+service pmta restart

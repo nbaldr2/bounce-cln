@@ -1,0 +1,103 @@
+#!/usr/bin/expect -f
+# deploy.exp — Automated SSH deployment to production server
+# Usage: expect scripts/deploy.exp <ssh_password>
+# Or:    ./scripts/deploy.sh <ssh_password>
+
+set timeout 600
+set password [lindex $argv 0]
+set host "80.96.108.180"
+set user "root"
+set local_project "/Users/soufianerochdi/Documents/bounce-cln"
+set remote_dir "/opt/bounce-cln"
+
+if {[llength $argv] < 1} {
+    puts "Usage: expect scripts/deploy.exp <ssh_password>"
+    exit 1
+}
+
+puts "╔════════════════════════════════════════════════════════════╗"
+puts "║         Bounce-CLN Deploy to $host          ║"
+puts "╚════════════════════════════════════════════════════════════╝"
+puts ""
+
+# ─── Step 1: Create tarball locally ──────────────────────────────
+puts "📦 Creating deployment tarball (excluding node_modules & .git)..."
+set parent_dir [file dirname $local_project]
+set project_name [file tail $local_project]
+set tarball "/tmp/bounce-cln-deploy.tar.gz"
+
+if {[catch {exec bash -c "cd $parent_dir && tar czf $tarball --exclude='node_modules' --exclude='.git' $project_name"} err]} {
+    puts "❌ Failed to create tarball: $err"
+    exit 1
+}
+puts "   ✓ Tarball created: $tarball"
+
+# ─── Step 2: Ensure remote directory exists ──────────────────────
+puts "📤 Preparing remote server..."
+spawn ssh -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=15 \
+          $user@$host "mkdir -p $remote_dir && rm -rf ${remote_dir}/*"
+expect {
+    -nocase "password:" { send "$password\r" }
+    -nocase "passphrase" { send "$password\r" }
+    timeout { puts "\n❌ SSH connection timed out"; exit 1 }
+    eof
+}
+
+# ─── Step 3: Upload tarball ──────────────────────────────────────
+puts "📤 Uploading project to remote..."
+spawn scp -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=15 \
+          $tarball $user@$host:/tmp/
+expect {
+    -nocase "password:" { send "$password\r" }
+    -nocase "passphrase" { send "$password\r" }
+    timeout { puts "\n❌ SCP upload timed out"; exit 1 }
+    eof
+}
+puts "   ✓ Upload complete"
+
+# ─── Step 4: Extract & run remote setup ──────────────────────────
+puts ""
+puts "🔧 Running remote setup (this takes ~3-5 minutes)..."
+puts "   Installing Docker, Node.js, PostgreSQL, Redis, PM2..."
+puts ""
+
+spawn ssh -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=15 \
+          $user@$host \
+          "rm -rf $remote_dir && mkdir -p $remote_dir && tar xzf /tmp/bounce-cln-deploy.tar.gz -C $remote_dir --strip-components=1 && chmod +x $remote_dir/scripts/remote-setup.sh && bash $remote_dir/scripts/remote-setup.sh"
+
+set ssh_done 0
+while {$ssh_done == 0} {
+    expect {
+        -nocase "password:" { send "$password\r" }
+        -nocase "passphrase" { send "$password\r" }
+        "DEPLOYMENT COMPLETE" { set ssh_done 1 }
+        "✅ DEPLOYMENT COMPLETE" { set ssh_done 1 }
+        timeout {
+            puts "\n⚠️  Setup is taking longer than expected..."
+            set ssh_done 1
+        }
+        eof { set ssh_done 1 }
+    }
+}
+
+puts ""
+puts "╔════════════════════════════════════════════════════════════╗"
+puts "║                🎉 REMOTE DEPLOYMENT DONE                   ║"
+puts "╚════════════════════════════════════════════════════════════╝"
+puts ""
+puts "  Dashboard : http://$host:3000"
+puts "  API       : http://$host:4000"
+puts "  Health    : http://$host:4000/health"
+puts ""
+puts "  To check remote status:"
+puts "    ssh root@$host 'pm2 list'"
+puts ""
+puts "  To view logs:"
+puts "    ssh root@$host 'pm2 logs bounce-api'"
+puts ""

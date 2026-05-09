@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ─────────────────────────────────────────────────
+
+enum NodeStatus {
+  PENDING
+  PROVISIONING
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+  ERROR
+}
+
+enum ListStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  PAUSED
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  ASSIGNED
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRYING
+}
+
+enum VerifyStatus {
+  VALID
+  INVALID
+  UNKNOWN
+  CATCH_ALL
+  SOFT_BOUNCE
+  GREYLISTED
+  TIMEOUT
+}
+
+enum RetryStatus {
+  PENDING
+  ASSIGNED
+  COMPLETED
+  DEAD_LETTER
+}
+
+enum AlertType {
+  NODE_OFFLINE
+  HIGH_BOUNCE_RATE
+  IP_BLACKLISTED
+  QUEUE_OVERFLOW
+  WARMUP_COMPLETE
+  DNS_VERIFICATION_FAILED
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+// ─── Models ────────────────────────────────────────────────
+
+model Node {
+  id             String     @id @default(uuid())
+  hostname       String
+  ip             String     @unique
+  sshPort        Int        @default(22)
+  sshUser        String     @default("root")
+  sshKeyPath     String?
+  status         NodeStatus @default(PENDING)
+  cpuUsage       Float      @default(0)
+  memoryUsage    Float      @default(0)
+  queueDepth     Int        @default(0)
+  lastHeartbeat  DateTime?
+  pmtaConfigured Boolean    @default(false)
+  warmupDay      Int        @default(0)
+  maxChecksPerDay Int       @default(200)
+  tags           String[]   @default([])
+  errorMessage   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  ips     NodeIp[]
+  jobs    EmailJob[]
+  results EmailResult[]
+  alerts  Alert[]
+
+  @@index([status])
+}
+
+model NodeIp {
+  id              String  @id @default(uuid())
+  nodeId          String
+  ip              String
+  reputationScore Float   @default(100)
+  warmupDay       Int     @default(0)
+  dailyCount      Int     @default(0)
+  lastReset       DateTime @default(now())
+  provider        String?
+
+  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, ip])
+  @@index([provider])
+}
+
+model SendingDomain {
+  id             String   @id @default(uuid())
+  domain         String   @unique
+  dkimSelector   String   @default("bounce")
+  dkimPrivateKey String   @db.Text
+  dkimPublicKey  String   @db.Text
+  dkimDnsRecord  String   @db.Text
+  spfRecord      String?
+  dnsVerified    Boolean  @default(false)
+  lastDnsCheck   DateTime?
+  createdAt      DateTime @default(now())
+}
+
+model EmailList {
+  id          String     @id @default(uuid())
+  name        String
+  fileName    String
+  totalEmails Int
+  processed   Int        @default(0)
+  valid       Int        @default(0)
+  invalid     Int        @default(0)
+  unknown     Int        @default(0)
+  catchAll    Int        @default(0)
+  status      ListStatus @default(PENDING)
+  uploadedAt  DateTime   @default(now())
+  completedAt DateTime?
+
+  jobs EmailJob[]
+
+  @@index([status])
+}
+
+model EmailJob {
+  id          String    @id @default(uuid())
+  listId      String
+  nodeId      String?
+  batchIndex  Int
+  emails      String[]
+  emailCount  Int       @default(0)
+  status      JobStatus @default(QUEUED)
+  priority    Int       @default(0)
+  attempts    Int       @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  list    EmailList     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  node    Node?         @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  results EmailResult[]
+
+  @@index([status, listId])
+  @@index([nodeId, status])
+}
+
+model EmailResult {
+  id          String       @id @default(uuid())
+  jobId       String
+  nodeId      String?
+  email       String
+  domain      String
+  mxProvider  String?
+  status      VerifyStatus
+  smtpCode    Int?
+  smtpMessage String?
+  isCatchAll  Boolean      @default(false)
+  retryCount  Int          @default(0)
+  checkedAt   DateTime     @default(now())
+
+  job  EmailJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  node Node?    @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([domain])
+  @@index([status])
+  @@index([jobId])
+}
+
+model SuppressionEntry {
+  id     String   @id @default(uuid())
+  email  String   @unique
+  reason String
+  source String
+  addedAt DateTime @default(now())
+}
+
+model CatchAllDomain {
+  id          String   @id @default(uuid())
+  domain      String   @unique
+  detectedAt  DateTime @default(now())
+  lastChecked DateTime @default(now())
+}
+
+model RetryQueue {
+  id             String      @id @default(uuid())
+  email          String
+  jobId          String
+  smtpCode       Int
+  smtpMessage    String?
+  retryCount     Int         @default(0)
+  maxRetries     Int         @default(3)
+  retryAfter     DateTime
+  assignedNodeId String?
+  status         RetryStatus @default(PENDING)
+  createdAt      DateTime    @default(now())
+
+  @@index([status, retryAfter])
+}
+
+model RateLimit {
+  id                String @id @default(uuid())
+  provider          String @unique
+  maxSmtpOut        Int
+  maxMsgRatePerHour Int
+  connectTimeout    Int    @default(30)
+  description       String?
+}
+
+model Alert {
+  id         String        @id @default(uuid())
+  type       AlertType
+  severity   AlertSeverity
+  message    String
+  nodeId     String?
+  resolved   Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  resolvedAt DateTime?
+
+  node Node? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+
+  @@index([resolved, createdAt])
+}
+
+model Setting {
+  key         String   @id
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}

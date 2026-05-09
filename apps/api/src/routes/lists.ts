@@ -52,7 +52,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
 
   try {
     // Parse CSV to extract emails
-    const emails: string[] = [];
+    const emailSet = new Set<string>();
     const parser = fs.createReadStream(req.file.path).pipe(
       parse({ columns: false, skip_empty_lines: true, trim: true })
     );
@@ -60,10 +60,20 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     for await (const row of parser) {
       const cell = Array.isArray(row) ? row[0] : Object.values(row as Record<string, string>)[0];
       const email = String(cell || '').trim().toLowerCase();
-      if (email && email.includes('@') && !emails.includes(email)) {
-        emails.push(email);
+      if (email && email.includes('@')) {
+        emailSet.add(email);
       }
     }
+
+    // Sort emails by reversed domain (reverse_ns_sharded)
+    // e.g., "user@example.com" -> "com.example"
+    const emails = Array.from(emailSet).sort((a, b) => {
+      const domainA = a.split('@')[1] || '';
+      const domainB = b.split('@')[1] || '';
+      const reversedA = domainA.split('.').reverse().join('.');
+      const reversedB = domainB.split('.').reverse().join('.');
+      return reversedA.localeCompare(reversedB);
+    });
 
     fs.unlink(req.file.path, () => {}); // Cleanup temp file
 
